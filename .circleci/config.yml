@@ -42,87 +42,87 @@ workflows:
       - orb-tools/trigger-integration-tests-workflow:
           requires: [orb-tools/publish-dev]
 
-  integration-test_deploy:
-    when: << pipeline.parameters.run-integration-tests >>
-    jobs:
-      - pre-integration-checkout-workspace-job:
-          name: pre-integration
+  # integration-test_deploy:
+  #   when: << pipeline.parameters.run-integration-tests >>
+  #   jobs:
+  #     - pre-integration-checkout-workspace-job:
+  #         name: pre-integration
 
-      - aws-ecr/build-and-push-image:
-          name: integration-tests-default-profile
-          attach-workspace: true
-          workspace-root: workspace
-          repo: aws-ecr-orb-${CIRCLE_SHA1:0:7}-default-profile
-          create-repo: true
-          tag: integration,myECRRepoTag
-          dockerfile: sample/Dockerfile
-          path: workspace
-          extra-build-args: --compress
-          post-steps:
-            - run: aws ecr delete-repository --repository-name aws-ecr-orb-${CIRCLE_SHA1:0:7}-default-profile --force
-          requires: [pre-integration]
+  #     - aws-ecr/build-and-push-image:
+  #         name: integration-tests-default-profile
+  #         attach-workspace: true
+  #         workspace-root: workspace
+  #         repo: aws-ecr-orb-${CIRCLE_SHA1:0:7}-default-profile
+  #         create-repo: true
+  #         tag: integration,myECRRepoTag
+  #         dockerfile: sample/Dockerfile
+  #         path: workspace
+  #         extra-build-args: --compress
+  #         post-steps:
+  #           - run: aws ecr delete-repository --repository-name aws-ecr-orb-${CIRCLE_SHA1:0:7}-default-profile --force
+  #         requires: [pre-integration]
 
-      - aws-ecr/build-and-push-image:
-          name: integration-tests-named-profile
-          attach-workspace: true
-          workspace-root: workspace
-          profile-name: testing
-          repo: aws-ecr-orb-${CIRCLE_SHA1:0:7}-named-profile
-          create-repo: true
-          tag: integration,myECRRepoTag
-          dockerfile: sample/Dockerfile
-          path: workspace
-          extra-build-args: --compress
-          post-steps:
-            - run: aws ecr delete-repository --repository-name aws-ecr-orb-${CIRCLE_SHA1:0:7}-named-profile --force
-          executor:
-            name: aws-ecr/default
-            use-docker-layer-caching: true
-          requires: [pre-integration]
+  #     - aws-ecr/build-and-push-image:
+  #         name: integration-tests-named-profile
+  #         attach-workspace: true
+  #         workspace-root: workspace
+  #         profile-name: testing
+  #         repo: aws-ecr-orb-${CIRCLE_SHA1:0:7}-named-profile
+  #         create-repo: true
+  #         tag: integration,myECRRepoTag
+  #         dockerfile: sample/Dockerfile
+  #         path: workspace
+  #         extra-build-args: --compress
+  #         post-steps:
+  #           - run: aws ecr delete-repository --repository-name aws-ecr-orb-${CIRCLE_SHA1:0:7}-named-profile --force
+  #         executor:
+  #           name: aws-ecr/default
+  #           use-docker-layer-caching: true
+  #         requires: [pre-integration]
 
-      - aws-ecr/build-and-push-image:
-          name: integration-tests-skip-when-tags-exist-populate-image
-          attach-workspace: true
-          workspace-root: workspace
-          repo: aws-ecr-orb-${CIRCLE_SHA1:0:7}-skip-when-tags-exist
-          create-repo: true
-          tag: integration,myECRRepoTag
-          dockerfile: sample/Dockerfile
-          path: workspace
-          extra-build-args: --compress
-          skip-when-tags-exist: true
-          executor:
-            name: aws-ecr/default
-            use-docker-layer-caching: true
-          requires: [pre-integration]
+  #     - aws-ecr/build-and-push-image:
+  #         name: integration-tests-skip-when-tags-exist-populate-image
+  #         attach-workspace: true
+  #         workspace-root: workspace
+  #         repo: aws-ecr-orb-${CIRCLE_SHA1:0:7}-skip-when-tags-exist
+  #         create-repo: true
+  #         tag: integration,myECRRepoTag
+  #         dockerfile: sample/Dockerfile
+  #         path: workspace
+  #         extra-build-args: --compress
+  #         skip-when-tags-exist: true
+  #         executor:
+  #           name: aws-ecr/default
+  #           use-docker-layer-caching: true
+  #         requires: [pre-integration]
 
-      - aws-ecr/build-and-push-image:
-          name: integration-tests-skip-when-tags-exist
-          attach-workspace: true
-          workspace-root: workspace
-          repo: aws-ecr-orb-${CIRCLE_SHA1:0:7}-skip-when-tags-exist
-          tag: integration,myECRRepoTag
-          dockerfile: sample/Dockerfile
-          path: workspace
-          extra-build-args: --compress
-          skip-when-tags-exist: true
-          post-steps:
-            - run: aws ecr delete-repository --repository-name aws-ecr-orb-${CIRCLE_SHA1:0:7}-skip-when-tags-exist --force
-          executor:
-            name: aws-ecr/default
-            use-docker-layer-caching: true
-          requires: [integration-tests-skip-when-tags-exist-populate-image]
+  #     - aws-ecr/build-and-push-image:
+  #         name: integration-tests-skip-when-tags-exist
+  #         attach-workspace: true
+  #         workspace-root: workspace
+  #         repo: aws-ecr-orb-${CIRCLE_SHA1:0:7}-skip-when-tags-exist
+  #         tag: integration,myECRRepoTag
+  #         dockerfile: sample/Dockerfile
+  #         path: workspace
+  #         extra-build-args: --compress
+  #         skip-when-tags-exist: true
+  #         post-steps:
+  #           - run: aws ecr delete-repository --repository-name aws-ecr-orb-${CIRCLE_SHA1:0:7}-skip-when-tags-exist --force
+  #         executor:
+  #           name: aws-ecr/default
+  #           use-docker-layer-caching: true
+  #         requires: [integration-tests-skip-when-tags-exist-populate-image]
 
-      - orb-tools/dev-promote-prod-from-commit-subject:
-          orb-name: amioranza/aws-ecr
-          add-pr-comment: true
-          fail-if-semver-not-indicated: true
-          publish-version-tag: true
-          ssh-fingerprints: 6f:16:49:d2:97:35:10:43:bc:a6:3f:f8:62:89:1f:42
-          filters:
-            branches:
-              only: master
-          requires:
-            - integration-tests-default-profile
-            - integration-tests-named-profile
-            - integration-tests-skip-when-tags-exist
+  #     - orb-tools/dev-promote-prod-from-commit-subject:
+  #         orb-name: amioranza/aws-ecr
+  #         add-pr-comment: true
+  #         fail-if-semver-not-indicated: true
+  #         publish-version-tag: true
+  #         ssh-fingerprints: 6f:16:49:d2:97:35:10:43:bc:a6:3f:f8:62:89:1f:42
+  #         filters:
+  #           branches:
+  #             only: master
+  #         requires:
+  #           - integration-tests-default-profile
+  #           - integration-tests-named-profile
+  #           - integration-tests-skip-when-tags-exist
