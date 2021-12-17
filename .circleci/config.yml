@@ -41,6 +41,7 @@ workflows:
           requires: [orb-tools/pack]
 
       - orb-tools/trigger-integration-tests-workflow:
+          context: orb-publishing
           requires: [orb-tools/publish-dev]
 
   # integration-test_deploy:
