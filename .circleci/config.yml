@@ -1,24 +1,17 @@
 version: 2.1
 
 orbs:
-  # Replace this with your own!
-  aws-ecr: amioranza/aws-ecr@<<pipeline.parameters.dev-orb-version>>
   orb-tools: circleci/orb-tools@10.0
-  bats: circleci/bats@1.0
-  shellcheck: circleci/shellcheck@2.0
+  aws-ecr: amioranza/aws-ecr@<<pipeline.parameters.dev-orb-version>>
 
-# Pipeline Parameters
-## These parameters are used internally by orb-tools. Skip to the Jobs section.
+# Pipeline parameters
 parameters:
+  # These pipeline parameters are required by the "trigger-integration-tests-workflow"
+  # job, by default.
   run-integration-tests:
-    description: An internal flag to prevent integration test from running before a development version has been created.
     type: boolean
     default: false
   dev-orb-version:
-    description: >
-      The development version of the orb to test.
-      This value is automatically adjusted by the "trigger-integration-tests-workflow" job to correspond with the specific version created by the commit and should not be edited.
-      A "dev:alpha" version must exist for the initial pipeline run.
     type: string
     default: "dev:alpha"
 
@@ -34,54 +27,102 @@ jobs:
           paths: [sample/Dockerfile]
 
 workflows:
-  # Prior to producing a development orb (which requires credentials) basic validation, linting, and even unit testing can be performed.
-  # This workflow will run on every commit
   test-pack:
     unless: << pipeline.parameters.run-integration-tests >>
     jobs:
-      - orb-tools/lint # Lint Yaml files
+      - orb-tools/lint
+
       - orb-tools/pack:
           requires: [orb-tools/lint]
-      # Publish development version(s) of the orb.
+
       - orb-tools/publish-dev:
           orb-name: amioranza/aws-ecr
-          context: orb-publishing # A restricted context containing your private publishing credentials. Will only execute if approved by an authorized user.
-          requires:
-            - orb-tools/lint
-            - orb-tools/pack
-      # Trigger an integration workflow to test the
-      # dev:${CIRCLE_SHA1:0:7} version of your orb
-      - orb-tools/trigger-integration-tests-workflow:
-          name: trigger-integration-dev
-          context: orb-publishing
-          requires:
-            - orb-tools/publish-dev
+          requires: [orb-tools/pack]
 
-  # This `integration-test_deploy` workflow will only run
-  # when the run-integration-tests pipeline parameter is set to true.
-  # It is meant to be triggered by the "trigger-integration-tests-workflow"
-  # job, and run tests on <your orb>@dev:${CIRCLE_SHA1:0:7}.
+      - orb-tools/trigger-integration-tests-workflow:
+          requires: [orb-tools/publish-dev]
+
   integration-test_deploy:
     when: << pipeline.parameters.run-integration-tests >>
     jobs:
-      # Run any integration tests defined within the `jobs` key.
-      - integration-test-1
-      # Publish a semver version of the orb. relies on
-      # the commit subject containing the text "[semver:patch|minor|major|skip]"
-      # as that will determine whether a patch, minor or major
-      # version will be published or if publishing should
-      # be skipped.
-      # e.g. [semver:patch] will cause a patch version to be published.
+      - pre-integration-checkout-workspace-job:
+          name: pre-integration
+
+      - aws-ecr/build-and-push-image:
+          name: integration-tests-default-profile
+          attach-workspace: true
+          workspace-root: workspace
+          repo: aws-ecr-orb-${CIRCLE_SHA1:0:7}-default-profile
+          create-repo: true
+          tag: integration,myECRRepoTag
+          dockerfile: sample/Dockerfile
+          path: workspace
+          extra-build-args: --compress
+          post-steps:
+            - run: aws ecr delete-repository --repository-name aws-ecr-orb-${CIRCLE_SHA1:0:7}-default-profile --force
+          requires: [pre-integration]
+
+      - aws-ecr/build-and-push-image:
+          name: integration-tests-named-profile
+          attach-workspace: true
+          workspace-root: workspace
+          profile-name: testing
+          repo: aws-ecr-orb-${CIRCLE_SHA1:0:7}-named-profile
+          create-repo: true
+          tag: integration,myECRRepoTag
+          dockerfile: sample/Dockerfile
+          path: workspace
+          extra-build-args: --compress
+          post-steps:
+            - run: aws ecr delete-repository --repository-name aws-ecr-orb-${CIRCLE_SHA1:0:7}-named-profile --force
+          executor:
+            name: aws-ecr/default
+            use-docker-layer-caching: true
+          requires: [pre-integration]
+
+      - aws-ecr/build-and-push-image:
+          name: integration-tests-skip-when-tags-exist-populate-image
+          attach-workspace: true
+          workspace-root: workspace
+          repo: aws-ecr-orb-${CIRCLE_SHA1:0:7}-skip-when-tags-exist
+          create-repo: true
+          tag: integration,myECRRepoTag
+          dockerfile: sample/Dockerfile
+          path: workspace
+          extra-build-args: --compress
+          skip-when-tags-exist: true
+          executor:
+            name: aws-ecr/default
+            use-docker-layer-caching: true
+          requires: [pre-integration]
+
+      - aws-ecr/build-and-push-image:
+          name: integration-tests-skip-when-tags-exist
+          attach-workspace: true
+          workspace-root: workspace
+          repo: aws-ecr-orb-${CIRCLE_SHA1:0:7}-skip-when-tags-exist
+          tag: integration,myECRRepoTag
+          dockerfile: sample/Dockerfile
+          path: workspace
+          extra-build-args: --compress
+          skip-when-tags-exist: true
+          post-steps:
+            - run: aws ecr delete-repository --repository-name aws-ecr-orb-${CIRCLE_SHA1:0:7}-skip-when-tags-exist --force
+          executor:
+            name: aws-ecr/default
+            use-docker-layer-caching: true
+          requires: [integration-tests-skip-when-tags-exist-populate-image]
+
       - orb-tools/dev-promote-prod-from-commit-subject:
           orb-name: amioranza/aws-ecr
-          context: orb-publishing
-          add-pr-comment: false
+          add-pr-comment: true
           fail-if-semver-not-indicated: true
-          publish-version-tag: false
-          requires:
-            - integration-test-1
+          publish-version-tag: true
+          ssh-fingerprints: 6f:16:49:d2:97:35:10:43:bc:a6:3f:f8:62:89:1f:42
           filters:
             branches:
-              only:
-                - master
-                - main
+              only: master
+          requires:
+            - integration-tests-default-profile
+            - integration-tests-named-profile
+            - integration-tests-skip-when-tags-exist
